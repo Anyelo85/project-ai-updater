@@ -2,118 +2,113 @@ import os
 import subprocess
 import requests
 import time
+import sys
 from openai import OpenAI
 
-# Configuración con limpieza de espacios y barras finales
-OLLAMA_NGROK_URL = os.environ.get("OLLAMA_NGROK_URL", "").strip().rstrip('/')
-TARGET_REPO_URL = os.environ.get("TARGET_REPO_URL", "").strip()
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+# 1. Limpieza extrema de variables
+OLLAMA_NGROK_URL = os.environ.get("OLLAMA_NGROK_URL", "").strip().replace('\n', '').replace('\r', '').rstrip('/')
+TARGET_REPO_URL = os.environ.get("TARGET_REPO_URL", "").strip().replace('\n', '').replace('\r', '')
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip().replace('\n', '').replace('\r', '')
 
 def main():
-    print(f"--- DEBUG: Iniciando Proceso ---")
-    print(f"URL: {OLLAMA_NGROK_URL}")
-    print(f"Repo: {TARGET_REPO_URL}")
-
-    if not OLLAMA_NGROK_URL or not TARGET_REPO_URL:
-        print("ERROR: Faltan Secrets en GitHub (OLLAMA_NGROK_URL o TARGET_REPO_URL).")
+    print("--- INICIO DEL SCRIPT (V3) ---")
+    
+    if not TARGET_REPO_URL:
+        print("ERROR: TARGET_REPO_URL no definida.")
         return
 
-    repo_name = TARGET_REPO_URL.split("/")[-1].replace(".git", "").strip()
+    # Extraer nombre del repo y limpiar CUALQUIER carácter invisible
+    repo_name = TARGET_REPO_URL.split("/")[-1].replace(".git", "")
+    repo_name = "".join(c for c in repo_name if c.isalnum() or c in ('-', '_')).strip()
     
+    print(f"Variable Repo: '{repo_name}'")
+
+    # Limpiar si ya existe
     if os.path.exists(repo_name):
-        print(f"Limpiando directorio antiguo: {repo_name}")
+        print(f"Borrando carpeta existente: {repo_name}")
         subprocess.run(["rm", "-rf", repo_name], check=False)
 
-    print(f"Clonando {TARGET_REPO_URL}...")
+    print(f"Ejecutando: git clone {TARGET_REPO_URL}")
     try:
-        subprocess.run(["git", "clone", TARGET_REPO_URL], check=True)
+        # Clonar el repo
+        result = subprocess.run(["git", "clone", TARGET_REPO_URL, repo_name], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Error en git clone: {result.stderr}")
+            return
     except Exception as e:
-        print(f"Error al clonar: {e}")
+        print(f"Error fatal al clonar: {e}")
+        return
+
+    # Verificar si la carpeta existe realmente
+    print(f"Directorios actuales: {os.listdir('.')}")
+    if not os.path.isdir(repo_name):
+        print(f"ERROR: La carpeta '{repo_name}' no existe tras el clonado.")
         return
 
     os.chdir(repo_name)
-    print(f"Cambiado al directorio: {os.getcwd()}")
+    print(f"Cambiado a: {os.getcwd()}")
 
-    # Buscar archivo para analizar (Prioridad index.html)
-    archivos_posibles = ["index.html", "main.cpp", "app.js", "style.css"]
-    file_to_analyze = None
-    
-    for f in archivos_posibles:
-        if os.path.exists(f):
-            file_to_analyze = f
-            break
+    # Buscar archivo (index.html, app.js, o el primero que encuentre)
+    archivos = [f for f in os.listdir('.') if os.path.isfile(f) and not f.startswith('.')]
+    file_to_analyze = "index.html" if "index.html" in archivos else (archivos[0] if archivos else None)
     
     if not file_to_analyze:
-        todos = [f for f in os.listdir('.') if os.path.isfile(f)]
-        if todos:
-            file_to_analyze = todos[0]
-    
-    if not file_to_analyze:
-        print("Error: No se encontró ningún archivo para analizar.")
+        print("No se encontraron archivos para mejorar.")
         return
 
-    print(f"Analizando archivo: {file_to_analyze}")
+    print(f"Mejorando: {file_to_analyze}")
     with open(file_to_analyze, "r", encoding='utf-8') as f:
         original_code = f.read()
 
-    print(f"Conectando con Ollama (esperando respuesta)...")
+    print(f"Conectando a Ollama en {OLLAMA_NGROK_URL}...")
     try:
         client = OpenAI(
             base_url=f"{OLLAMA_NGROK_URL}/v1",
             api_key="ollama",
-            timeout=300.0 # 5 minutos de espera
+            timeout=600.0
         )
         
-        prompt = f"Mejora este código profesionalmente. Responde SOLO con el código:\n\n{original_code}"
+        prompt = f"Mejora este código profesionalmente. Responde SOLO con el código completo:\n\n{original_code}"
         
-        start = time.time()
         response = client.chat.completions.create(
             model="llama3", 
             messages=[{"role": "user", "content": prompt}]
         )
-        print(f"Ollama respondió en {time.time() - start:.2f} segundos.")
         
         suggested_code = response.choices[0].message.content.strip()
         
-        # Limpiar bloques de código markdown
+        # Limpiar Markdown
         if "```" in suggested_code:
             suggested_code = suggested_code.split("```")[1]
             if "\n" in suggested_code:
-                first_line = suggested_code.split("\n")[0]
-                if first_line.lower() in ["html", "css", "js", "javascript", "cpp", "python"]:
-                    suggested_code = "\n".join(suggested_code.split("\n")[1:])
-            suggested_code = suggested_code.strip()
+                suggested_code = "\n".join(suggested_code.split("\n")[1:]).strip()
 
         with open(file_to_analyze, "w", encoding='utf-8') as f:
             f.write(suggested_code)
         
-        print("Cambios guardados. Creando Rama y PR...")
-        
+        print("Creando Pull Request en GitHub...")
         subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
         subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
-        subprocess.run(["git", "checkout", "-b", "ai-improvements"], check=True)
+        subprocess.run(["git", "checkout", "-b", "ai-fix"], check=True)
         subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", "IA: Mejoras de código"], check=True)
+        subprocess.run(["git", "commit", "-m", "IA: Mejoras automáticas"], check=True)
         
         push_url = TARGET_REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")
-        subprocess.run(["git", "push", "-f", push_url, "ai-improvements"], check=True)
+        subprocess.run(["git", "push", "-f", push_url, "ai-fix"], check=True)
         
-        api_url = TARGET_REPO_URL.replace("https://github.com/", "https://api.github.com/repos/").replace(".git", "")
-        pr_payload = {
-            "title": "IA: Sugerencia de mejora",
-            "body": "Sugerencia automática de Ollama.",
-            "head": "ai-improvements",
-            "base": "main"
-        }
-        res = requests.post(f"{api_url}/pulls", json=pr_payload, headers={"Authorization": f"token {GITHUB_TOKEN}"})
+        # API de GitHub para PR
+        repo_path = TARGET_REPO_URL.replace("https://github.com/", "").replace(".git", "")
+        api_url = f"https://api.github.com/repos/{repo_path}/pulls"
+        pr_data = {"title": "Mejora IA", "body": "Sugerencia de Ollama", "head": "ai-fix", "base": "main"}
         
+        res = requests.post(api_url, json=pr_data, headers={"Authorization": f"token {GITHUB_TOKEN}"})
         if res.status_code == 201:
-            print("¡Pull Request creado con éxito!")
+            print("¡TODO LISTO! Revisa tus Pull Requests.")
         else:
-            print(f"Error al crear PR: {res.text}")
+            print(f"Aviso PR: {res.text}")
 
     except Exception as e:
-        print(f"ERROR FATAL: {e}")
+        print(f"Error en el proceso de IA: {e}")
 
 if __name__ == "__main__":
     main()
