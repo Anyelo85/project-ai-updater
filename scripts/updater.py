@@ -5,37 +5,59 @@ from openai import OpenAI
 
 # Configuración
 OPENAI_API_KEY = "ollama" # Ollama no requiere una key real
-OLLAMA_NGROK_URL = os.environ.get("OLLAMA_NGROK_URL", "http://localhost:11434")
-TARGET_REPO_URL = os.environ["TARGET_REPO_URL"]
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+OLLAMA_NGROK_URL = os.environ.get("OLLAMA_NGROK_URL", "").strip()
+TARGET_REPO_URL = os.environ.get("TARGET_REPO_URL", "").strip()
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 
 def main():
+    if not TARGET_REPO_URL:
+        print("Error: TARGET_REPO_URL no está configurada.")
+        return
+
     print("Starting AI Updater with Ollama...")
 
-    repo_name = TARGET_REPO_URL.split("/")[-1].replace(".git", "")
+    # Limpiar el nombre del repo de posibles saltos de línea o espacios
+    repo_name = TARGET_REPO_URL.split("/")[-1].replace(".git", "").strip()
     
-    # Limpiar si ya existe
+    # Limpiar si ya existe la carpeta
     if os.path.exists(repo_name):
-        # En Windows usamos rmdir para seguridad, en Linux rm -rf
+        print(f"Limpiando directorio existente: {repo_name}")
         if os.name == 'nt':
             subprocess.run(f"rmdir /s /q {repo_name}", shell=True, check=False)
         else:
-            subprocess.run(f"rm -rf {repo_name}", shell=True, check=False)
+            subprocess.run(["rm", "-rf", repo_name], check=False)
 
-    print(f"Cloning {repo_name}...")
-    subprocess.run(f"git clone {TARGET_REPO_URL}", shell=True, check=True)
+    print(f"Cloning {repo_name} desde {TARGET_REPO_URL}...")
+    subprocess.run(["git", "clone", TARGET_REPO_URL], check=True)
+
+    if not os.path.exists(repo_name):
+        print(f"Error: No se pudo encontrar la carpeta clonada {repo_name}")
+        return
 
     os.chdir(repo_name)
     branch_name = "ai-suggestion"
     
-    # <--- ¡IMPORTANTE! CAMBIA ESTA LÍNEA AL ARCHIVO QUE QUIERAS ANALIZAR --->
-    file_to_analyze = "src/main.cpp" 
+    # <--- AJUSTA ESTO: ¿Qué archivo quieres que la IA mejore? --->
+    # Si tu portafolio es HTML/JS, cambia esto por "index.html" o similar.
+    file_to_analyze = "index.html" 
+
+    if not os.path.exists(file_to_analyze):
+        # Si no existe index.html, intentamos buscar cualquier archivo .html o .js
+        print(f"Aviso: {file_to_analyze} no encontrado. Buscando alternativa...")
+        archivos = [f for f in os.listdir('.') if f.endswith(('.html', '.js', '.cpp', '.py'))]
+        if archivos:
+            file_to_analyze = archivos[0]
+            print(f"Usando archivo encontrado: {file_to_analyze}")
+        else:
+            print("Error: No se encontraron archivos para analizar.")
+            os.chdir("..")
+            return
 
     try:
-        with open(file_to_analyze, "r") as f:
+        with open(file_to_analyze, "r", encoding='utf-8') as f:
             original_code = f.read()
-    except FileNotFoundError:
-        print(f"Error: File {file_to_analyze} not found. Exiting.")
+    except Exception as e:
+        print(f"Error al leer el archivo: {e}")
         os.chdir("..")
         return
 
@@ -45,7 +67,7 @@ def main():
         api_key=OPENAI_API_KEY
     )
     
-    prompt = f"Analyze the following C++ code and suggest improvements for performance and readability. Respond only with the full, updated code, no explanations.\n\n```cpp\n{original_code}\n```"
+    prompt = f"Mejora el siguiente código para que sea más profesional y eficiente. Responde ÚNICAMENTE con el código completo actualizado, sin explicaciones ni bloques de markdown:\n\n{original_code}"
     
     try:
         response = client.chat.completions.create(
@@ -53,37 +75,40 @@ def main():
             messages=[{"role": "user", "content": prompt}]
         )
         suggested_code = response.choices[0].message.content
-        # Limpiar el código de bloques de markdown si la IA los incluye
+        
+        # Limpieza básica por si la IA añade markdown
         if "```" in suggested_code:
-            suggested_code = suggested_code.split("```")[1]
-            if suggested_code.startswith("cpp"):
-                suggested_code = suggested_code[3:]
+            parts = suggested_code.split("```")
+            suggested_code = parts[1]
+            # Quitar el nombre del lenguaje si existe (ej: ```html)
+            if suggested_code.startswith(("html", "javascript", "js", "cpp", "python", "py")):
+                suggested_code = "\n".join(suggested_code.split("\n")[1:])
             suggested_code = suggested_code.strip()
 
     except Exception as e:
-        print(f"Error calling AI API: {e}")
+        print(f"Error llamando a la IA: {e}")
         os.chdir("..")
         return
 
     print(f"Creating branch {branch_name}...")
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"])
     subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"])
-    subprocess.run(f"git checkout -b {branch_name}", shell=True, check=True)
+    subprocess.run(["git", "checkout", "-b", branch_name], check=True)
     
     print("Applying AI suggestions...")
-    with open(file_to_analyze, "w") as f:
+    with open(file_to_analyze, "w", encoding='utf-8') as f:
         f.write(suggested_code)
     
     subprocess.run(["git", "add", file_to_analyze])
-    subprocess.run(["git", "commit", "-m", "AI: Suggest code improvements"])
+    subprocess.run(["git", "commit", "-m", f"AI: Sugerencia de mejora para {file_to_analyze}"])
     
     print(f"Pushing branch {branch_name}...")
     push_url = TARGET_REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@")
-    subprocess.run(f"git push {push_url} {branch_name}", shell=True, check=True)
+    subprocess.run(["git", "push", "-f", push_url, branch_name], check=True)
     
     print("Creating Pull Request...")
-    pr_title = f"AI Suggestion: Improve {file_to_analyze}"
-    pr_body = "This is an automated suggestion from an AI (Ollama). Please review the changes carefully before merging."
+    pr_title = f"IA Sugerencia: Mejorar {file_to_analyze}"
+    pr_body = "Esta es una sugerencia automática generada por Ollama (Llama3). Por favor, revisa los cambios antes de fusionar."
     
     api_url = TARGET_REPO_URL.replace("https://github.com/", "https://api.github.com/repos/").replace(".git", "")
     pr_data = {"title": pr_title, "body": pr_body, "head": branch_name, "base": "main"}
@@ -91,12 +116,12 @@ def main():
     
     response = requests.post(f"{api_url}/pulls", json=pr_data, headers=headers)
     if response.status_code == 201:
-        print("Pull Request created successfully!")
+        print("¡Pull Request creado con éxito!")
     else:
-        print(f"Failed to create Pull Request: {response.status_code} - {response.text}")
+        print(f"Error al crear PR: {response.status_code} - {response.text}")
     
     os.chdir("..")
-    print("Process finished.")
+    print("Proceso finalizado.")
 
 if __name__ == "__main__":
     main()
