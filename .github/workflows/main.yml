@@ -26,7 +26,7 @@ jobs:
 
       - name: Run the updater script
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OLLAMA_NGROK_URL: ${{ secrets.OLLAMA_NGROK_URL }}
           TARGET_REPO_URL: ${{ secrets.TARGET_REPO_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/updater.py
