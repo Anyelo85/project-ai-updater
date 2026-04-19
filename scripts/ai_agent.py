@@ -5,31 +5,33 @@ from openai import OpenAI
 
 # Limpieza absoluta de variables
 def clean(txt):
-    return "".join(c for c in (txt or "") if c.isalnum() or c in (':', '/', '.', '-', '_')).strip()
+    if not txt: return ""
+    return "".join(c for c in txt if c.isalnum() or c in (':', '/', '.', '-', '_')).strip()
 
 OLLAMA_URL = clean(os.environ.get("OLLAMA_NGROK_URL", "")).rstrip('/')
 REPO_URL = clean(os.environ.get("TARGET_REPO_URL", ""))
 TOKEN = clean(os.environ.get("GITHUB_TOKEN", ""))
 
 def main():
-    print("--- INICIANDO VERSIÓN 5 (MODO SEGURO) ---")
+    print("--- INICIANDO AGENTE AI V5 ---")
     
     if not REPO_URL or not OLLAMA_URL:
-        print(f"ERROR: Variables incompletas. URL: '{OLLAMA_URL}', Repo: '{REPO_URL}'")
+        print(f"ERROR: Variables incompletas.")
+        print(f"OLLAMA_URL: '{OLLAMA_URL}'")
+        print(f"REPO_URL: '{REPO_URL}'")
         return
 
-    # Usamos un nombre de carpeta FIJO para evitar errores de caracteres invisibles
-    folder = "repo_trabajo"
+    # Carpeta FIJA para evitar el error del \n
+    folder = "temp_work_dir"
     
     if os.path.exists(folder):
         subprocess.run(["rm", "-rf", folder], check=False)
 
-    print(f"Clonando {REPO_URL} en {folder}...")
+    print(f"Clonando {REPO_URL}...")
     try:
-        # Forzamos el nombre de la carpeta al final del comando git clone
         subprocess.run(["git", "clone", REPO_URL, folder], check=True)
     except Exception as e:
-        print(f"Error fatal al clonar: {e}")
+        print(f"Error al clonar: {e}")
         return
 
     os.chdir(folder)
@@ -39,14 +41,14 @@ def main():
     target = "index.html" if "index.html" in files else (files[0] if files else None)
     
     if not target:
-        print("No se encontraron archivos en el repo.")
+        print("No se encontraron archivos en el repositorio.")
         return
 
-    print(f"Archivo a mejorar: {target}")
+    print(f"Archivo objetivo: {target}")
     with open(target, "r", encoding='utf-8') as f:
         code = f.read()
 
-    print(f"Conectando a Ollama en {OLLAMA_URL}...")
+    print(f"Llamando a Ollama en {OLLAMA_URL}...")
     try:
         client = OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="ollama", timeout=300)
         res = client.chat.completions.create(
@@ -55,7 +57,7 @@ def main():
         )
         new_code = res.choices[0].message.content.strip()
         
-        # Limpiar si la IA pone ```html ... ```
+        # Limpiar Markdown
         if "```" in new_code:
             new_code = new_code.split("```")[1]
             if "\n" in new_code:
@@ -67,23 +69,26 @@ def main():
         print("Creando Pull Request...")
         subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
         subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
-        subprocess.run(["git", "checkout", "-b", "ai-update"], check=True)
+        subprocess.run(["git", "checkout", "-b", "ai-update-branch"], check=True)
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", "IA: Mejoras automáticas"], check=True)
         
         push_url = REPO_URL.replace("https://", f"https://{TOKEN}@")
-        subprocess.run(["git", "push", "-f", push_url, "ai-update"], check=True)
+        subprocess.run(["git", "push", "-f", push_url, "ai-update-branch"], check=True)
         
         repo_path = REPO_URL.replace("https://github.com/", "").replace(".git", "")
-        requests.post(
+        pr_res = requests.post(
             f"https://api.github.com/repos/{repo_path}/pulls",
-            json={"title": "Mejora IA", "body": "Sugerencia de Ollama", "head": "ai-update", "base": "main"},
+            json={"title": "Mejora IA", "body": "Sugerencia de Ollama", "head": "ai-update-branch", "base": "main"},
             headers={"Authorization": f"token {TOKEN}"}
         )
-        print("¡PROCESO FINALIZADO CON ÉXITO!")
+        if pr_res.status_code == 201:
+            print("¡ÉXITO TOTAL! Pull Request creado.")
+        else:
+            print(f"Aviso sobre PR: {pr_res.text}")
 
     except Exception as e:
-        print(f"Error durante la conexión con la IA: {e}")
+        print(f"Error con la IA o Conexión: {e}")
 
 if __name__ == "__main__":
     main()

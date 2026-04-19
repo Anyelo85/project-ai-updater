@@ -29,4 +29,4 @@ jobs:
           OLLAMA_NGROK_URL: ${{ secrets.OLLAMA_NGROK_URL }}
           TARGET_REPO_URL: ${{ secrets.TARGET_REPO_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/updater.py
+        run: python scripts/ai_agent.py
