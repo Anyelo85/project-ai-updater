@@ -27,8 +27,17 @@ jobs:
       - name: Verify Secrets Presence
         run: |
           if [ -z "${{ secrets.OLLAMA_NGROK_URL }}" ]; then echo "❌ ERROR: OLLAMA_NGROK_URL no está definido."; exit 1; fi
+          if [ -z "${{ secrets.OLLAMA_NGROK_URL }}" ]; then echo "❌ ERROR: OLLAMA_NGROK_URL no está definido."; exit 1; fi
           if [ -z "${{ secrets.TARGET_REPO_URL }}" ]; then echo "❌ ERROR: TARGET_REPO_URL no está definido."; exit 1; fi
           if [ -z "${{ secrets.GH_TOKEN }}" ]; then echo "❌ ERROR: GH_TOKEN no está definido."; exit 1; fi
+        shell: /usr/bin/bash -e {0}
+        env:
+          pythonLocation: /opt/hostedtoolcache/Python/3.14.4/x64
+          PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.14.4/x64/lib/pkgconfig
+          Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.4/x64
+          Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.4/x64
+          Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.4/x64
+          LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.14.4/x64/lib
 
       - name: Run the updater script
         env:
