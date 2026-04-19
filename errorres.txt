@@ -1,6 +1,0 @@
-Run python scripts/ai_agent.py
-  
---- INICIANDO AGENTE AI V5 ---
-ERROR: Variables incompletas.
-OLLAMA_URL: ''
-REPO_URL: '***'
