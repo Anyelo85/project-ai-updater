@@ -48,12 +48,15 @@ def main():
 
         print(f"Conectando a Ollama en {OLLAMA_URL}...")
         try:
-            # IMPORTANTE: Añadimos 'ngrok-skip-browser-warning' para evitar el error 403
+            # IMPORTANTE: Configuración correcta de autenticación para ngrok
             client = OpenAI(
                 base_url=f"{OLLAMA_URL}/v1", 
                 api_key="ollama", 
                 timeout=300,
-                default_headers={"ngrok-skip-browser-warning": "true"}
+                default_headers={
+                    "ngrok-skip-browser-warning": "true",
+                    "User-Agent": "OpenAI/Python"
+                }
             )
             
             res = client.chat.completions.create(
