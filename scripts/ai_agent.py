@@ -8,21 +8,20 @@ def clean(txt):
     if not txt: return ""
     return "".join(c for c in txt if c.isalnum() or c in (':', '/', '.', '-', '_')).strip()
 
-# Obtener las variables
+# Obtener las variables (ahora usando GH_TOKEN)
 OLLAMA_URL = clean(os.environ.get("OLLAMA_NGROK_URL", ""))
 REPO_URL = clean(os.environ.get("TARGET_REPO_URL", ""))
-TOKEN = clean(os.environ.get("GITHUB_TOKEN", ""))
+TOKEN = clean(os.environ.get("GH_TOKEN", ""))
 
 def main():
     print("--- DIAGNÓSTICO DE AGENTE AI ---")
     
-    # Verificación de presencia de variables (SÍ/NO)
     print(f"¿OLLAMA_NGROK_URL configurado?: {'SÍ' if OLLAMA_URL else 'NO'}")
     print(f"¿TARGET_REPO_URL configurado?: {'SÍ' if REPO_URL else 'NO'}")
-    print(f"¿GITHUB_TOKEN configurado?: {'SÍ' if TOKEN else 'NO'}")
+    print(f"¿GH_TOKEN configurado?: {'SÍ' if TOKEN else 'NO'}")
 
     if not REPO_URL or not OLLAMA_URL or not TOKEN:
-        print("\nERROR: Faltan secretos en GitHub. El agente no puede continuar.")
+        print("\nERROR: Faltan secretos en GitHub. Asegúrate de usar: GH_TOKEN")
         return
 
     folder = "repo_trabajo"
@@ -85,7 +84,7 @@ def main():
         )
         
         if pr_res.status_code == 201:
-            print("¡ÉXITO TOTAL! Revisa tu portafolio para ver el nuevo Pull Request.")
+            print("¡ÉXITO TOTAL!")
         else:
             print(f"Aviso sobre PR: {pr_res.text}")
 
