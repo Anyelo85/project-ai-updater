@@ -3,15 +3,10 @@ import subprocess
 import requests
 from openai import OpenAI
 
-# Limpieza absoluta de variables
-def clean(txt):
-    if not txt: return ""
-    return "".join(c for c in txt if c.isalnum() or c in (':', '/', '.', '-', '_')).strip()
-
-# Obtener las variables
-OLLAMA_URL = clean(os.environ.get("OLLAMA_NGROK_URL", ""))
-REPO_URL = clean(os.environ.get("TARGET_REPO_URL", ""))
-TOKEN = clean(os.environ.get("GH_TOKEN", ""))
+# Obtener las variables de manera segura
+OLLAMA_URL = os.environ.get("OLLAMA_NGROK_URL", "").strip()
+REPO_URL = os.environ.get("TARGET_REPO_URL", "").strip()
+TOKEN = os.environ.get("GH_TOKEN", "").strip()
 
 def main():
     print("--- DIAGNÓSTICO DE AGENTE AI ---")
@@ -30,22 +25,26 @@ def main():
     print(f"\nClonando el repositorio objetivo...")
     try:
         subprocess.run(["git", "clone", REPO_URL, folder], check=True)
-        os.chdir(folder)
     except Exception as e:
         print(f"Error al clonar: {e}")
         return
 
-    # Buscar archivo
-    files = [f for f in os.listdir('.') if os.path.isfile(f) and not f.startswith('.')]
-    target = "index.html" if "index.html" in files else (files[0] if files else None)
-    
-    if not target:
-        print("No se encontraron archivos editables.")
-        return
+    # Usar context manager para manejar el cambio de directorio de forma segura
+    original_dir = os.getcwd()
+    try:
+        os.chdir(folder)
+        
+        # Buscar archivo
+        files = [f for f in os.listdir('.') if os.path.isfile(f) and not f.startswith('.')]
+        target = "index.html" if "index.html" in files else (files[0] if files else None)
+        
+        if not target:
+            print("No se encontraron archivos editables.")
+            return
 
-    print(f"Archivo seleccionado: {target}")
-    with open(target, "r", encoding='utf-8') as f:
-        code = f.read()
+        print(f"Archivo seleccionado: {target}")
+        with open(target, "r", encoding='utf-8') as f:
+            code = f.read()
 
     print(f"Conectando a Ollama en {OLLAMA_URL}...")
     try:
@@ -59,14 +58,26 @@ def main():
         
         res = client.chat.completions.create(
             model="llama3",
-            messages=[{"role": "user", "content": f"Mejora este código profesionalmente. Responde SOLO con el código completo:\n\n{code}"}]
+            messages=[{"role": "user", "content": f"Mejora este código profesionalmente. Responde SOLO con el código completo sin explicaciones:\n\n{code}"}]
         )
         new_code = res.choices[0].message.content.strip()
         
+        # Extracción robusta de código entre backticks
         if "```" in new_code:
-            new_code = new_code.split("```")[1]
-            if "\n" in new_code:
-                new_code = "\n".join(new_code.split("\n")[1:])
+            parts = new_code.split("```")
+            if len(parts) >= 2:
+                # Obtener el código entre los backticks
+                code_block = parts[1]
+                # Saltar la primera línea si contiene identificador de lenguaje (html, python, etc)
+                lines = code_block.split("\n")
+                if lines and not lines[0].strip().startswith(" "):
+                    code_block = "\n".join(lines[1:] if len(lines) > 1 else [])
+                new_code = code_block.strip()
+        
+        # Validar que el código no esté vacío
+        if not new_code:
+            print("⚠️ Advertencia: La IA no devolvió código válido, usando original")
+            new_code = code
         
         with open(target, "w", encoding='utf-8') as f:
             f.write(new_code.strip())
@@ -78,8 +89,10 @@ def main():
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", "IA: Mejoras automáticas"], check=True)
         
-        push_url = REPO_URL.replace("https://", f"https://{TOKEN}@")
-        subprocess.run(["git", "push", "-f", push_url, "ai-upgrade"], check=True)
+        # Usar variable de entorno GH_TOKEN de forma segura para git
+        env = os.environ.copy()
+        env["GH_TOKEN"] = TOKEN
+        subprocess.run(["git", "push", "-f", REPO_URL, "ai-upgrade"], check=True, env=env)
         
         repo_path = REPO_URL.replace("https://github.com/", "").replace(".git", "")
         pr_res = requests.post(
@@ -95,6 +108,9 @@ def main():
 
     except Exception as e:
         print(f"Error en la conexión con la IA: {e}")
+    finally:
+        # Asegurar que volvamos al directorio original
+        os.chdir(original_dir)
 
 if __name__ == "__main__":
     main()
