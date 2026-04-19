@@ -26,13 +26,13 @@ jobs:
 
       - name: Verify Secrets Presence
         run: |
-          if [ -z "${{ secrets.OLLAMA_NGROK_URL }}" ]; then echo "❌ ERROR: OLLAMA_NGROK_URL no está definido en Secrets."; fi
-          if [ -z "${{ secrets.TARGET_REPO_URL }}" ]; then echo "❌ ERROR: TARGET_REPO_URL no está definido en Secrets."; fi
-          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then echo "❌ ERROR: GITHUB_TOKEN no está definido en Secrets."; fi
+          if [ -z "${{ secrets.OLLAMA_NGROK_URL }}" ]; then echo "❌ ERROR: OLLAMA_NGROK_URL no está definido."; fi
+          if [ -z "${{ secrets.TARGET_REPO_URL }}" ]; then echo "❌ ERROR: TARGET_REPO_URL no está definido."; fi
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then echo "❌ ERROR: GITHUB_TOKEN no está definido."; fi
 
       - name: Run the updater script
         env:
           OLLAMA_NGROK_URL: ${{ secrets.OLLAMA_NGROK_URL }}
           TARGET_REPO_URL: ${{ secrets.TARGET_REPO_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/ai_agent.py
