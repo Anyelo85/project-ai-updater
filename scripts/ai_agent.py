@@ -8,20 +8,19 @@ def clean(txt):
     if not txt: return ""
     return "".join(c for c in txt if c.isalnum() or c in (':', '/', '.', '-', '_')).strip()
 
-# Obtener las variables (ahora usando GH_TOKEN)
+# Obtener las variables
 OLLAMA_URL = clean(os.environ.get("OLLAMA_NGROK_URL", ""))
 REPO_URL = clean(os.environ.get("TARGET_REPO_URL", ""))
 TOKEN = clean(os.environ.get("GH_TOKEN", ""))
 
 def main():
     print("--- DIAGNÓSTICO DE AGENTE AI ---")
-    
     print(f"¿OLLAMA_NGROK_URL configurado?: {'SÍ' if OLLAMA_URL else 'NO'}")
     print(f"¿TARGET_REPO_URL configurado?: {'SÍ' if REPO_URL else 'NO'}")
     print(f"¿GH_TOKEN configurado?: {'SÍ' if TOKEN else 'NO'}")
 
     if not REPO_URL or not OLLAMA_URL or not TOKEN:
-        print("\nERROR: Faltan secretos en GitHub. Asegúrate de usar: GH_TOKEN")
+        print("\nERROR: Faltan secretos en GitHub.")
         return
 
     folder = "repo_trabajo"
@@ -36,7 +35,7 @@ def main():
         print(f"Error al clonar: {e}")
         return
 
-    # Buscar archivo para analizar
+    # Buscar archivo
     files = [f for f in os.listdir('.') if os.path.isfile(f) and not f.startswith('.')]
     target = "index.html" if "index.html" in files else (files[0] if files else None)
     
@@ -50,14 +49,20 @@ def main():
 
     print(f"Conectando a Ollama en {OLLAMA_URL}...")
     try:
-        client = OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="ollama", timeout=300)
+        # IMPORTANTE: Añadimos 'ngrok-skip-browser-warning' para evitar el error 403
+        client = OpenAI(
+            base_url=f"{OLLAMA_URL}/v1", 
+            api_key="ollama", 
+            timeout=300,
+            default_headers={"ngrok-skip-browser-warning": "true"}
+        )
+        
         res = client.chat.completions.create(
             model="llama3",
-            messages=[{"role": "user", "content": f"Mejora este código profesionalmente. Responde SOLO con el código:\n\n{code}"}]
+            messages=[{"role": "user", "content": f"Mejora este código profesionalmente. Responde SOLO con el código completo:\n\n{code}"}]
         )
         new_code = res.choices[0].message.content.strip()
         
-        # Limpieza de Markdown
         if "```" in new_code:
             new_code = new_code.split("```")[1]
             if "\n" in new_code:
@@ -84,7 +89,7 @@ def main():
         )
         
         if pr_res.status_code == 201:
-            print("¡ÉXITO TOTAL!")
+            print("¡ÉXITO TOTAL! Revisa tu portafolio.")
         else:
             print(f"Aviso sobre PR: {pr_res.text}")
 
