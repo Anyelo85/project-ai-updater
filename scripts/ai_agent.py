@@ -47,6 +47,26 @@ def main():
             code = f.read()
 
         print(f"Conectando a Ollama en {OLLAMA_URL}...")
+        
+        # Verificar conectividad antes de hacer la solicitud
+        try:
+            health_check = requests.get(
+                f"{OLLAMA_URL}/api/tags",
+                headers={"ngrok-skip-browser-warning": "true"},
+                timeout=10
+            )
+            if health_check.status_code != 200:
+                print(f"⚠️ Advertencia: Ollama retornó {health_check.status_code}")
+            else:
+                print("✓ Conexión a Ollama verificada")
+        except requests.exceptions.ConnectionError as ce:
+            print(f"❌ ERROR: No se puede conectar a Ollama en {OLLAMA_URL}")
+            print(f"   Asegúrate que:")
+            print(f"   1. Ollama está ejecutándose en la URL remota")
+            print(f"   2. El ngrok tunnel está activo y accesible")
+            print(f"   3. La URL tiene el formato correcto (ej: https://xxxxx-xx-ngrok.io)")
+            return
+        
         try:
             # IMPORTANTE: Configuración correcta de autenticación para ngrok
             client = OpenAI(
@@ -110,7 +130,26 @@ def main():
                 print(f"Aviso sobre PR: {pr_res.text}")
 
         except Exception as e:
+            error_msg = str(e)
             print(f"Error en la conexión con la IA: {e}")
+            
+            # Diagnosticar errores comunes de ngrok
+            if "ERR_NGROK_8012" in error_msg or "failed to establish a connection" in error_msg:
+                print("\n🔧 SOLUCIÓN SUGERIDA:")
+                print("   El ngrok tunnel no puede conectar al Ollama remoto.")
+                print("   Verifica que:")
+                print("   • Ollama esté ejecutándose en la máquina remota")
+                print("   • El comando ngrok apunta a la dirección correcta")
+                print("   • El firewall permite la conexión")
+                print("\n   Ejecuta en tu máquina local:")
+                print("   ollama serve  # En una terminal")
+                print("   ngrok http http://localhost:11434  # En otra terminal")
+                print("   Luego copia la URL pública en OLLAMA_NGROK_URL")
+            elif "403" in error_msg:
+                print("\n🔧 SOLUCIÓN SUGERIDA:")
+                print("   El ngrok requiere autenticación o headers adicionales.")
+                print("   Intenta agregar un auth token de ngrok en GitHub Secrets")
+
     finally:
         # Asegurar que volvamos al directorio original
         os.chdir(original_dir)
